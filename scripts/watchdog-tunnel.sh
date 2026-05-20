@@ -83,9 +83,13 @@ if [ ! -f "$TOKEN_FILE" ]; then
 fi
 
 # ---- Check 0.5: tunnel waiting for auth? (process alive but showing login prompt) ----
+# Use capture-pane -S - to grab full scrollback history, not just visible area
 if "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
-    PANE_TEXT=$("$TMUX_BIN" capture-pane -t "$SESSION_NAME" -p 2>/dev/null || echo "")
-    if echo "$PANE_TEXT" | grep -qP 'use code [A-Z0-9-]+'; then
+    PANE_TEXT=$("$TMUX_BIN" capture-pane -t "$SESSION_NAME" -p -S - 2>/dev/null || echo "")
+    if echo "$PANE_TEXT" | grep -qP 'use code [A-Z0-9-]+' || \
+       echo "$PANE_TEXT" | grep -q 'How would you like to log in' || \
+       echo "$PANE_TEXT" | grep -q 'login/device' || \
+       echo "$PANE_TEXT" | grep -q 'devicelogin'; then
         notify_auth_needed "Tunnel is waiting for device code authentication"
         exit 1
     fi
@@ -128,10 +132,24 @@ fi
 
 # ---- Check 5: process has ESTABLISHED TCP connections? ----
 CONNECTIONS=$(ss -tnp 2>/dev/null | grep "pid=$TUNNEL_PID" | grep -c "ESTAB" || echo "0")
+RESTART_COUNT_FILE="$HOME/.vscode-tunnel/.restart-count"
 if [ "$CONNECTIONS" -eq 0 ]; then
-    log "FAIL: code tunnel process (PID=$TUNNEL_PID) has no active TCP connections, restarting service"
+    # Track consecutive no-connection restarts
+    COUNT=$(cat "$RESTART_COUNT_FILE" 2>/dev/null || echo "0")
+    COUNT=$((COUNT + 1))
+    echo "$COUNT" > "$RESTART_COUNT_FILE"
+    if [ "$COUNT" -ge 3 ]; then
+        # 3+ consecutive failures — likely auth issue, not transient
+        notify_auth_needed "Tunnel has failed to connect $COUNT times in a row (possible auth or config issue)"
+        exit 1
+    fi
+    log "FAIL: code tunnel process (PID=$TUNNEL_PID) has no active TCP connections (attempt $COUNT/3), restarting service"
     systemctl --user restart vscode-tunnel.service
     exit 0
+fi
+# Reset restart counter on success
+if [ -f "$RESTART_COUNT_FILE" ]; then
+    rm -f "$RESTART_COUNT_FILE"
 fi
 
 log "OK: tunnel running (PID=$TUNNEL_PID, state=$PROC_STATE, connections=$CONNECTIONS)"
