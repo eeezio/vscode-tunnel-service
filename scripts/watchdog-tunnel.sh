@@ -3,7 +3,6 @@ set -euo pipefail
 
 SESSION_NAME="vscode-tunnel"
 ENV_FILE="$HOME/.vscode-tunnel/env.sh"
-NOTIFY_EMAIL="${TUNNEL_NOTIFY_EMAIL:-}"
 NOTIFY_LOCK="$HOME/.vscode-tunnel/.auth-notified"
 
 log() { echo "[watchdog] $(date '+%Y-%m-%d %H:%M:%S') $1"; }
@@ -76,6 +75,7 @@ if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
 fi
 
+NOTIFY_EMAIL="${TUNNEL_NOTIFY_EMAIL:-}"
 TMUX_BIN=$(command -v tmux) || { log "ERROR: tmux not found"; exit 1; }
 
 # ---- Check 0: auth token exists? ----
