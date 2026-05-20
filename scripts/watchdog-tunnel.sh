@@ -83,9 +83,9 @@ if [ ! -f "$TOKEN_FILE" ]; then
 fi
 
 # ---- Check 0.5: tunnel waiting for auth? (process alive but showing login prompt) ----
-# Only capture visible pane area — auth prompt stays on screen while waiting
+# Capture full scrollback (-S -): ~200KB every 5min, negligible cost
 if "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
-    PANE_TEXT=$("$TMUX_BIN" capture-pane -t "$SESSION_NAME" -p 2>/dev/null || echo "")
+    PANE_TEXT=$("$TMUX_BIN" capture-pane -t "$SESSION_NAME" -p -S - 2>/dev/null || echo "")
     if echo "$PANE_TEXT" | grep -qP 'use code [A-Z0-9-]+' || \
        echo "$PANE_TEXT" | grep -q 'How would you like to log in' || \
        echo "$PANE_TEXT" | grep -q 'login/device' || \
