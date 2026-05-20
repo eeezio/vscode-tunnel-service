@@ -1,0 +1,17 @@
+[Unit]
+Description=VS Code Tunnel via tmux
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+ExecStart=%h/.vscode-tunnel/start-tunnel.sh
+ExecStop=%h/.vscode-tunnel/stop-tunnel.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Install]
+WantedBy=default.target

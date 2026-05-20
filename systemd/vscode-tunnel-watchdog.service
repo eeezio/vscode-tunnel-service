@@ -1,0 +1,6 @@
+[Unit]
+Description=VS Code Tunnel Watchdog
+
+[Service]
+Type=oneshot
+ExecStart=%h/.vscode-tunnel/watchdog-tunnel.sh
