@@ -40,9 +40,14 @@ if [ ! -x "$CODE_BIN" ]; then
     log "code CLI downloaded successfully"
 fi
 
-# ---- 3. Clean up stale tmux session ----
+# ---- 3. Clean up stale tmux session and lock files ----
 "$TMUX_BIN" kill-session -t "$SESSION_NAME" 2>/dev/null || true
-log "Cleaned up stale tmux session (if any)"
+LOCK_FILE="$HOME/.vscode/cli/tunnel-stable.lock"
+if [ -f "$LOCK_FILE" ]; then
+    rm -f "$LOCK_FILE"
+    log "Removed stale tunnel lock file"
+fi
+log "Cleaned up stale tmux session and lock files (if any)"
 
 # ---- 4. Wait for network ----
 MAX_WAIT=120
