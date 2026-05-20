@@ -75,7 +75,9 @@ fi
 log "tmux session '$SESSION_NAME' created"
 
 # ---- 7. Launch tunnel inside tmux ----
+# Use tmux pipe-pane for logging instead of | tee, to preserve terminal interactivity
+"$TMUX_BIN" pipe-pane -t "$SESSION_NAME" "cat >> $LOG_FILE"
 "$TMUX_BIN" send-keys -t "$SESSION_NAME" \
-    "$CODE_BIN tunnel --accept-server-license-terms --name $TUNNEL_NAME 2>&1 | tee -a $LOG_FILE" Enter
+    "$CODE_BIN tunnel --accept-server-license-terms --name $TUNNEL_NAME" Enter
 
 log "Tunnel started in tmux session '$SESSION_NAME' with name '$TUNNEL_NAME'"
