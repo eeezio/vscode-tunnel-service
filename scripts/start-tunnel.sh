@@ -6,7 +6,7 @@ ENV_FILE="$HOME/.vscode-tunnel/env.sh"
 CODE_BIN="$HOME/.vscode-tunnel/bin/code"
 LOG_DIR="$HOME/.vscode-tunnel/logs"
 LOG_FILE="$LOG_DIR/tunnel.log"
-TUNNEL_NAME="$(hostname)"
+TUNNEL_NAME="$(hostname -s)"
 
 log() { echo "[start-tunnel] $(date '+%Y-%m-%d %H:%M:%S') $1"; }
 
