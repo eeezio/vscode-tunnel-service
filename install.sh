@@ -11,6 +11,39 @@ log() { echo "[install] $1"; }
 
 log "=== VS Code Tunnel Service Installer ==="
 
+# ---- 0. Check for conflicting tunnel setups ----
+CONFLICTING_CRON=$(crontab -l 2>/dev/null | grep -i 'tunnel\|code tunnel\|check_tunnel\|start_tmux' || true)
+if [ -n "$CONFLICTING_CRON" ]; then
+    log ""
+    log "WARNING: Found crontab entries that may conflict with this service:"
+    log ""
+    echo "$CONFLICTING_CRON" | while IFS= read -r line; do log "  $line"; done
+    log ""
+    read -p "[install] Remove these crontab entries? They will conflict with the systemd watchdog. [y/N] " -r
+    if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+        crontab -l 2>/dev/null | grep -iv 'tunnel\|code tunnel\|check_tunnel\|start_tmux' | crontab - 2>/dev/null || crontab -r 2>/dev/null || true
+        log "Conflicting crontab entries removed"
+    else
+        log "WARNING: Keeping conflicting crontab entries. This may cause duplicate restarts and false alerts."
+    fi
+fi
+
+CONFLICTING_PROCS=$(pgrep -u "$USER" -af "code tunnel" | grep -v "$INSTALL_DIR" || true)
+if [ -n "$CONFLICTING_PROCS" ]; then
+    log ""
+    log "WARNING: Found other VS Code tunnel processes not managed by this service:"
+    log ""
+    echo "$CONFLICTING_PROCS" | while IFS= read -r line; do log "  $line"; done
+    log ""
+    read -p "[install] Kill these processes? They will conflict with the new tunnel. [y/N] " -r
+    if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+        echo "$CONFLICTING_PROCS" | awk '{print $1}' | xargs kill 2>/dev/null || true
+        log "Conflicting tunnel processes killed"
+    else
+        log "WARNING: Keeping conflicting processes. The new tunnel may fail to start."
+    fi
+fi
+
 # ---- 1. Detect architecture and download VS Code CLI ----
 if [ -x "$BIN_DIR/code" ]; then
     log "VS Code CLI already exists at $BIN_DIR/code, skipping download"
