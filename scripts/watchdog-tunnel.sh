@@ -3,8 +3,51 @@ set -euo pipefail
 
 SESSION_NAME="vscode-tunnel"
 ENV_FILE="$HOME/.vscode-tunnel/env.sh"
+NOTIFY_EMAIL="${TUNNEL_NOTIFY_EMAIL:-}"
+NOTIFY_LOCK="$HOME/.vscode-tunnel/.auth-notified"
 
 log() { echo "[watchdog] $(date '+%Y-%m-%d %H:%M:%S') $1"; }
+
+notify_auth_needed() {
+    local reason="$1"
+    # Capture tmux pane to extract auth URL and device code
+    local pane_content
+    pane_content=$("$TMUX_BIN" capture-pane -t "$SESSION_NAME" -p 2>/dev/null || echo "")
+
+    local auth_url
+    auth_url=$(echo "$pane_content" | grep -oP 'https://github\.com/login/device|https://microsoft\.com/devicelogin' | head -1 || echo "")
+    local device_code
+    device_code=$(echo "$pane_content" | grep -oP 'use code \K[A-Z0-9-]+' | head -1 || echo "")
+
+    log "CRITICAL: $reason"
+    log "CRITICAL: Auth URL: ${auth_url:-not found in tmux}"
+    log "CRITICAL: Device code: ${device_code:-not found in tmux}"
+    log "CRITICAL: Manual fix: tmux attach -t $SESSION_NAME"
+
+    # Send email notification (only once until resolved)
+    if [ -n "$NOTIFY_EMAIL" ] && [ ! -f "$NOTIFY_LOCK" ]; then
+        local subject="[TUNNEL ALERT] $(hostname -s): re-authentication required"
+        local body="VS Code tunnel on $(hostname -s) needs manual re-authentication.
+
+Reason: $reason
+Time: $(date)
+
+Auth URL: ${auth_url:-not found - attach to tmux to see}
+Device Code: ${device_code:-not found - attach to tmux to see}
+
+To fix, SSH/attach and run:
+  tmux attach -t $SESSION_NAME
+
+Or open the auth URL above and enter the device code."
+
+        echo "$body" | mail -s "$subject" "$NOTIFY_EMAIL" 2>/dev/null \
+            && log "Email notification sent to $NOTIFY_EMAIL" \
+            || log "WARNING: failed to send email notification"
+        touch "$NOTIFY_LOCK"
+    elif [ -f "$NOTIFY_LOCK" ]; then
+        log "Email already sent (remove $NOTIFY_LOCK to re-notify)"
+    fi
+}
 
 # ---- Source env.sh ----
 if [ -f "$ENV_FILE" ]; then
@@ -16,9 +59,23 @@ TMUX_BIN=$(command -v tmux) || { log "ERROR: tmux not found"; exit 1; }
 # ---- Check 0: auth token exists? ----
 TOKEN_FILE="$HOME/.vscode/cli/token.json"
 if [ ! -f "$TOKEN_FILE" ]; then
-    log "CRITICAL: $TOKEN_FILE is missing! Tunnel requires manual re-authentication."
-    log "CRITICAL: Run: tmux attach -t $SESSION_NAME  and complete the login flow."
+    notify_auth_needed "Auth token $TOKEN_FILE is missing"
     exit 1
+fi
+
+# ---- Check 0.5: tunnel waiting for auth? (process alive but showing login prompt) ----
+if "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
+    PANE_TEXT=$("$TMUX_BIN" capture-pane -t "$SESSION_NAME" -p 2>/dev/null || echo "")
+    if echo "$PANE_TEXT" | grep -qP 'use code [A-Z0-9-]+'; then
+        notify_auth_needed "Tunnel is waiting for device code authentication"
+        exit 1
+    fi
+fi
+
+# Clear notification lock if tunnel is healthy (auth was completed)
+if [ -f "$NOTIFY_LOCK" ]; then
+    rm -f "$NOTIFY_LOCK"
+    log "Auth issue resolved, cleared notification lock"
 fi
 
 # ---- Check 1: tmux session exists? ----
