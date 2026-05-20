@@ -82,8 +82,26 @@ if [ ! -f "$TOKEN_FILE" ]; then
     exit 1
 fi
 
-# Auth prompt detection moved to Check 5 — only check when tunnel is already unhealthy
-# to avoid false positives from old auth prompts in scrollback history
+# ---- Check 0.5: tunnel waiting for auth? ----
+# Only check VISIBLE pane (no -S -) to avoid false positives from old scrollback.
+# Auth prompt is blocking/interactive, so it stays on screen while waiting.
+# After auth succeeds, tunnel output pushes it off the visible area.
+if "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
+    PANE_TEXT=$("$TMUX_BIN" capture-pane -t "$SESSION_NAME" -p 2>/dev/null || echo "")
+    if echo "$PANE_TEXT" | grep -qP 'use code [A-Z0-9-]+' || \
+       echo "$PANE_TEXT" | grep -q 'How would you like to log in' || \
+       echo "$PANE_TEXT" | grep -q 'login/device' || \
+       echo "$PANE_TEXT" | grep -q 'devicelogin'; then
+        notify_auth_needed "Tunnel is waiting for device code authentication"
+        exit 1
+    fi
+fi
+
+# Clear notification lock if tunnel passed auth checks (auth was completed)
+if [ -f "$NOTIFY_LOCK" ]; then
+    rm -f "$NOTIFY_LOCK"
+    log "Auth issue resolved, cleared notification lock"
+fi
 
 # ---- Check 1: tmux session exists? ----
 if ! "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
@@ -118,16 +136,7 @@ fi
 CONNECTIONS=$(ss -tnp 2>/dev/null | grep "pid=$TUNNEL_PID" | grep -c "ESTAB" || echo "0")
 RESTART_COUNT_FILE="$HOME/.vscode-tunnel/.restart-count"
 if [ "$CONNECTIONS" -eq 0 ]; then
-    # Tunnel is unhealthy — check if it's an auth issue by inspecting tmux
-    PANE_TEXT=$("$TMUX_BIN" capture-pane -t "$SESSION_NAME" -p -S - 2>/dev/null || echo "")
-    if echo "$PANE_TEXT" | grep -qP 'use code [A-Z0-9-]+' || \
-       echo "$PANE_TEXT" | grep -q 'How would you like to log in' || \
-       echo "$PANE_TEXT" | grep -q 'login/device' || \
-       echo "$PANE_TEXT" | grep -q 'devicelogin'; then
-        notify_auth_needed "Tunnel is waiting for device code authentication"
-        exit 1
-    fi
-    # Not an obvious auth issue — track consecutive failures
+    # Auth already checked at Check 0.5 — if we reach here, it's a connection issue
     COUNT=$(cat "$RESTART_COUNT_FILE" 2>/dev/null || echo "0")
     COUNT=$((COUNT + 1))
     echo "$COUNT" > "$RESTART_COUNT_FILE"
