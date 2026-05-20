@@ -40,7 +40,26 @@ To fix, SSH/attach and run:
 
 Or open the auth URL above and enter the device code."
 
-        echo "$body" | mail -s "$subject" "$NOTIFY_EMAIL" 2>/dev/null \
+        python3 - "$NOTIFY_EMAIL" "$subject" "$body" <<'PYEOF' 2>/dev/null \
+import sys, smtplib, os
+from email.mime.text import MIMEText
+to, subj, body = sys.argv[1], sys.argv[2], sys.argv[3]
+smtp_host = os.environ.get("TUNNEL_SMTP_HOST", "smtp.gmail.com")
+smtp_port = int(os.environ.get("TUNNEL_SMTP_PORT", "587"))
+smtp_user = os.environ.get("TUNNEL_SMTP_USER", "")
+smtp_pass = os.environ.get("TUNNEL_SMTP_PASS", "")
+if not smtp_user or not smtp_pass:
+    print("SMTP credentials not configured"); sys.exit(1)
+msg = MIMEText(body)
+msg["Subject"] = subj
+msg["From"] = smtp_user
+msg["To"] = to
+s = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+s.starttls()
+s.login(smtp_user, smtp_pass)
+s.sendmail(smtp_user, [to], msg.as_string())
+s.quit()
+PYEOF
             && log "Email notification sent to $NOTIFY_EMAIL" \
             || log "WARNING: failed to send email notification"
         touch "$NOTIFY_LOCK"
