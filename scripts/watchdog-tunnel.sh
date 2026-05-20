@@ -108,11 +108,7 @@ if "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
     fi
 fi
 
-# Clear notification lock if tunnel passed auth checks (auth was completed)
-if [ -f "$NOTIFY_LOCK" ]; then
-    rm -f "$NOTIFY_LOCK"
-    log "Auth issue resolved, cleared notification lock"
-fi
+# Notification lock is cleared at the end only after ALL checks pass (Check 5 success)
 
 # ---- Check 1: tmux session exists? ----
 if ! "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
