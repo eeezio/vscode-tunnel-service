@@ -13,6 +13,14 @@ fi
 
 TMUX_BIN=$(command -v tmux) || { log "ERROR: tmux not found"; exit 1; }
 
+# ---- Check 0: auth token exists? ----
+TOKEN_FILE="$HOME/.vscode/cli/token.json"
+if [ ! -f "$TOKEN_FILE" ]; then
+    log "CRITICAL: $TOKEN_FILE is missing! Tunnel requires manual re-authentication."
+    log "CRITICAL: Run: tmux attach -t $SESSION_NAME  and complete the login flow."
+    exit 1
+fi
+
 # ---- Check 1: tmux session exists? ----
 if ! "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
     log "FAIL: tmux session '$SESSION_NAME' does not exist, restarting service"
