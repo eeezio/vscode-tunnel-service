@@ -83,15 +83,23 @@ if [ ! -f "$TOKEN_FILE" ]; then
 fi
 
 # ---- Check 0.5: tunnel waiting for auth? ----
-# Only check VISIBLE pane (no -S -) to avoid false positives from old scrollback.
-# Auth prompt is blocking/interactive, so it stays on screen while waiting.
-# After auth succeeds, tunnel output pushes it off the visible area.
+# Detect auth prompt in visible pane, but only alert if tunnel is NOT connected.
+# After successful auth, pane may still show old "use code" text alongside the
+# "Tunnel:" success line — so we check for BOTH signals to avoid false positives.
 if "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
     PANE_TEXT=$("$TMUX_BIN" capture-pane -t "$SESSION_NAME" -p 2>/dev/null || echo "")
+    HAS_AUTH_PROMPT=false
     if echo "$PANE_TEXT" | grep -qP 'use code [A-Z0-9-]+' || \
        echo "$PANE_TEXT" | grep -q 'How would you like to log in' || \
        echo "$PANE_TEXT" | grep -q 'login/device' || \
        echo "$PANE_TEXT" | grep -q 'devicelogin'; then
+        HAS_AUTH_PROMPT=true
+    fi
+    HAS_TUNNEL_CONNECTED=false
+    if echo "$PANE_TEXT" | grep -q 'Tunnel:'; then
+        HAS_TUNNEL_CONNECTED=true
+    fi
+    if [ "$HAS_AUTH_PROMPT" = true ] && [ "$HAS_TUNNEL_CONNECTED" = false ]; then
         notify_auth_needed "Tunnel is waiting for device code authentication"
         exit 1
     fi
