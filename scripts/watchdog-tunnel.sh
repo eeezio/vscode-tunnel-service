@@ -40,7 +40,7 @@ To fix, SSH/attach and run:
 
 Or open the auth URL above and enter the device code."
 
-        python3 - "$NOTIFY_EMAIL" "$subject" "$body" <<'PYEOF' 2>/dev/null \
+        python3 - "$NOTIFY_EMAIL" "$subject" "$body" <<'PYEOF'
 import sys, smtplib, os
 from email.mime.text import MIMEText
 to, subj, body = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -60,8 +60,11 @@ s.login(smtp_user, smtp_pass)
 s.sendmail(smtp_user, [to], msg.as_string())
 s.quit()
 PYEOF
-            && log "Email notification sent to $NOTIFY_EMAIL" \
-            || log "WARNING: failed to send email notification"
+        if [ $? -eq 0 ]; then
+            log "Email notification sent to $NOTIFY_EMAIL"
+        else
+            log "WARNING: failed to send email notification"
+        fi
         touch "$NOTIFY_LOCK"
     elif [ -f "$NOTIFY_LOCK" ]; then
         log "Email already sent (remove $NOTIFY_LOCK to re-notify)"
