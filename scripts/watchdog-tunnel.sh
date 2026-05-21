@@ -155,13 +155,16 @@ if [ "$CONNECTIONS" -eq 0 ]; then
     systemctl --user restart vscode-tunnel.service
     exit 0
 fi
-# Reset restart counter and notification lock on success
+# Reset restart counter on success
 if [ -f "$RESTART_COUNT_FILE" ]; then
     rm -f "$RESTART_COUNT_FILE"
 fi
-if [ -f "$NOTIFY_LOCK" ]; then
-    rm -f "$NOTIFY_LOCK"
-    log "Auth issue resolved, cleared notification lock"
+# Clear notification lock only if token file is NEWER than the lock (user re-authenticated)
+if [ -f "$NOTIFY_LOCK" ] && [ -f "$TOKEN_FILE" ]; then
+    if [ "$TOKEN_FILE" -nt "$NOTIFY_LOCK" ]; then
+        rm -f "$NOTIFY_LOCK"
+        log "Auth issue resolved (token renewed), cleared notification lock"
+    fi
 fi
 
 log "OK: tunnel running (PID=$TUNNEL_PID, state=$PROC_STATE, connections=$CONNECTIONS)"
