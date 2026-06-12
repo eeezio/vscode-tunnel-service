@@ -78,6 +78,25 @@ fi
 NOTIFY_EMAIL="${TUNNEL_NOTIFY_EMAIL:-}"
 TMUX_BIN=$(command -v tmux) || { log "ERROR: tmux not found"; exit 1; }
 
+# ---- Log rotation (runtime) ----
+# The tunnel runs for weeks; its log grows unbounded. Rotate here (every watchdog
+# cycle) instead of only at startup. Uses copytruncate-style: keep the last ~2MB
+# and truncate in place. pipe-pane writes with O_APPEND, so its fd stays valid and
+# continues appending at the new (smaller) end without leaving a sparse gap.
+LOG_FILE="$HOME/.vscode-tunnel/logs/tunnel.log"
+LOG_MAX_BYTES=10485760  # 10MB
+LOG_KEEP_BYTES=2097152  # keep last 2MB after rotation
+if [ -f "$LOG_FILE" ]; then
+    LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
+    if [ "$LOG_SIZE" -gt "$LOG_MAX_BYTES" ]; then
+        TMP_LOG=$(mktemp)
+        tail -c "$LOG_KEEP_BYTES" "$LOG_FILE" > "$TMP_LOG" 2>/dev/null || true
+        cat "$TMP_LOG" > "$LOG_FILE" 2>/dev/null || true
+        rm -f "$TMP_LOG"
+        log "Rotated tunnel.log (was $((LOG_SIZE / 1048576))MB, kept last 2MB)"
+    fi
+fi
+
 # ---- Check 0: auth token exists? ----
 TOKEN_FILE="$HOME/.vscode/cli/token.json"
 if [ ! -f "$TOKEN_FILE" ]; then

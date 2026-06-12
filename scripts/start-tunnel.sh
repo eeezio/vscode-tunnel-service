@@ -65,14 +65,11 @@ if [ "$WAITED" -lt "$MAX_WAIT" ]; then
     log "Network ready after ${WAITED}s"
 fi
 
-# ---- 5. Log rotation ----
+# ---- 5. Prepare log directory ----
+# Note: log rotation is handled by the watchdog (runs every 5min) using
+# copytruncate, because the tunnel runs for weeks and the log grows during
+# that time — a one-time check at startup is not enough.
 mkdir -p "$LOG_DIR"
-if [ -f "$LOG_FILE" ] && [ "$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)" -gt 10485760 ]; then
-    mv -f "${LOG_FILE}.2" "${LOG_FILE}.3" 2>/dev/null || true
-    mv -f "${LOG_FILE}.1" "${LOG_FILE}.2" 2>/dev/null || true
-    mv -f "$LOG_FILE" "${LOG_FILE}.1" 2>/dev/null || true
-    log "Log rotated"
-fi
 
 # ---- 6. Create tmux session with remain-on-exit ----
 "$TMUX_BIN" new-session -d -s "$SESSION_NAME" -x 200 -y 50
