@@ -103,6 +103,42 @@ chmod 600 ~/.vscode-tunnel/env.sh
 
 When auth is needed, you'll receive an email with the auth URL, device code, and instructions.
 
+> **On a shared/NFS home directory?** You almost certainly also need to set `TUNNEL_ALLOWED_HOST` — see the next section. Skipping it leads to duplicate emails from every cluster node.
+
+## ⚠️ Important: Shared / NFS Home Directories (clusters)
+
+On many HPC and cluster environments, your home directory is **NFS-mounted and shared across every login/compute node**. This breaks the default assumption that `~/.vscode-tunnel/` is local to one machine, and causes serious problems if you don't account for it:
+
+- **`~/.vscode-tunnel/`** (scripts, lock file, logs, `env.sh`) is visible on *every* node
+- **`~/.config/systemd/user/`** (the enable symlinks) is also shared — so `systemctl --user enable` done on one node makes the units "enabled" everywhere
+- If the service starts on multiple nodes (via login sessions or per-node linger), **each node's watchdog fights over the same shared lock and log files, and they each send duplicate alert emails** — an email storm
+- Each node's watchdog also sees the others' tunnel PIDs (which don't exist locally) and may trigger spurious restarts
+
+### The fix: host guard
+
+Set `TUNNEL_ALLOWED_HOST` in `env.sh` to the short hostname of the **one** machine that should run the tunnel:
+
+```bash
+echo 'export TUNNEL_ALLOWED_HOST="'"$(hostname -s)"'"' >> ~/.vscode-tunnel/env.sh
+```
+
+Both `start-tunnel.sh` and `watchdog-tunnel.sh` check this on every run. On any host whose short hostname doesn't match, they **exit immediately** — no tunnel, no restart, no email. Since the scripts are shared via NFS, this single setting makes all other nodes no-ops automatically.
+
+If `TUNNEL_ALLOWED_HOST` is unset, the guard is disabled (the service runs on whatever host it's on — fine for truly local home directories).
+
+### Cleaning up other nodes
+
+If the tunnel already started on other nodes before you set the guard, those orphan tunnel processes keep running until that node reboots (or you get a session there to kill them). They're harmless once the guard is in place (their watchdog stops emailing), but to fully clean up, on each affected node run:
+
+```bash
+systemctl --user stop vscode-tunnel.service vscode-tunnel-watchdog.timer
+systemctl --user disable vscode-tunnel.service vscode-tunnel-watchdog.timer
+tmux kill-session -t vscode-tunnel 2>/dev/null
+pkill -u "$USER" -f 'code tunnel'
+```
+
+Note: `~/.vscode/cli/token.json` (the auth token) is also shared, which is actually fine — all nodes use the same account. Only the *runtime/control* state causes conflicts, which the host guard resolves.
+
 ## Repo Structure
 
 ```
@@ -382,6 +418,23 @@ Then restart your user systemd instance to pick up the new group:
 # This will briefly disconnect your tunnel (it auto-reconnects)
 sudo systemctl restart user@$(id -u).service
 ```
+
+### Receiving duplicate / repeated alert emails (every few minutes)
+
+Almost always caused by a **shared/NFS home directory** with the service running on more than one node. See the "Shared / NFS Home Directories" section above. Fix:
+
+```bash
+# Set the owner host (run on the machine that should host the tunnel)
+echo 'export TUNNEL_ALLOWED_HOST="'"$(hostname -s)"'"' >> ~/.vscode-tunnel/env.sh
+
+# Clear any stale notification lock
+rm -f ~/.vscode-tunnel/.auth-notified
+
+# Confirm which hosts have written to the shared log
+grep -aoE 'zhewan@[a-z0-9-]+' ~/.vscode-tunnel/logs/tunnel.log | sort -u
+```
+
+Then clean up the other nodes (stop/disable their service) as described in the shared-home section.
 
 ### Email notifications not working
 
