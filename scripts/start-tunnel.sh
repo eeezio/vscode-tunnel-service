@@ -17,6 +17,16 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 source "$ENV_FILE"
 
+# ---- Host guard ----
+# Home may be NFS-shared across cluster machines. Only start the tunnel on the
+# designated owner host to avoid running it on every node. Set TUNNEL_ALLOWED_HOST
+# in env.sh.
+ALLOWED_HOST="${TUNNEL_ALLOWED_HOST:-}"
+if [ -n "$ALLOWED_HOST" ] && [ "$(hostname -s)" != "$ALLOWED_HOST" ]; then
+    log "This host ($(hostname -s)) is not the designated tunnel owner ($ALLOWED_HOST), skipping startup"
+    exit 0
+fi
+
 TMUX_BIN=$(command -v tmux) || { log "ERROR: tmux not found in PATH"; exit 1; }
 log "Using tmux: $TMUX_BIN"
 

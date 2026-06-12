@@ -75,6 +75,17 @@ if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
 fi
 
+# ---- Host guard ----
+# Home is often NFS-shared across cluster machines, so this script and its state
+# (lock, logs, config) are visible on every node. Without this guard, the watchdog
+# would run on every machine, fight over the shared lock, and send duplicate emails.
+# Only run on the designated owner host. Set TUNNEL_ALLOWED_HOST in env.sh.
+ALLOWED_HOST="${TUNNEL_ALLOWED_HOST:-}"
+if [ -n "$ALLOWED_HOST" ] && [ "$(hostname -s)" != "$ALLOWED_HOST" ]; then
+    # Not the owner host — do nothing (no email, no restart).
+    exit 0
+fi
+
 NOTIFY_EMAIL="${TUNNEL_NOTIFY_EMAIL:-}"
 TMUX_BIN=$(command -v tmux) || { log "ERROR: tmux not found"; exit 1; }
 
