@@ -118,7 +118,8 @@ if ! "$TMUX_BIN" has-session -t "$SESSION_NAME" 2>/dev/null; then
 fi
 
 # ---- Check 2: code tunnel process alive? ----
-TUNNEL_PID=$(pgrep -u "$USER" -f "code tunnel" || true)
+# pgrep may match multiple PIDs (main tunnel + child server). Take the first (main) only.
+TUNNEL_PID=$(pgrep -u "$USER" -f "code tunnel" | head -1 || true)
 if [ -z "$TUNNEL_PID" ]; then
     log "FAIL: code tunnel process not found, restarting service"
     systemctl --user restart vscode-tunnel.service
@@ -140,7 +141,10 @@ if ! host tunnels.api.visualstudio.com >/dev/null 2>&1; then
 fi
 
 # ---- Check 5: process has ESTABLISHED TCP connections? ----
-CONNECTIONS=$(ss -tnp 2>/dev/null | grep "pid=$TUNNEL_PID" | grep -c "ESTAB" || echo "0")
+# Count ESTABLISHED connections for the tunnel PID. Use a single grep with -c and
+# strip any whitespace/newlines to avoid "integer expression expected" errors.
+CONNECTIONS=$(ss -tnp state established 2>/dev/null | grep -c "pid=$TUNNEL_PID" | tr -d '[:space:]')
+CONNECTIONS=${CONNECTIONS:-0}
 RESTART_COUNT_FILE="$HOME/.vscode-tunnel/.restart-count"
 if [ "$CONNECTIONS" -eq 0 ]; then
     # Auth already checked at Check 0.5 — if we reach here, it's a connection issue
